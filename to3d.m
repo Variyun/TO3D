@@ -68,18 +68,38 @@ fprintf('DONE\n')
 
 % Extract Features (currently only the strongest 1000)
 fprintf('Extracting Features...')
-[left_features, left_coords] = extractFeatures(rgb2gray(left_undistorted),left_points.selectStrongest(1000));
-[right_features, right_coords] = extractFeatures(rgb2gray(right_undistorted),right_points.selectStrongest(1000));
+[left_features, left_coords] = extractFeatures(rgb2gray(left_undistorted),left_points.selectStrongest(500));
+[right_features, right_coords] = extractFeatures(rgb2gray(right_undistorted),right_points.selectStrongest(500));
 fprintf('DONE\n')
 
 % Matching Features
 fprintf('Matching Features...')
 indexPairs = matchFeatures(left_features, right_features);
-left_match = left_coords.Location(indexPairs(:,1),1:2);
-right_match = right_coords.Location(indexPairs(:,2),1:2);
+left_match = double(left_coords.Location(indexPairs(:,1),1:2));
+right_match = double(right_coords.Location(indexPairs(:,2),1:2));
 % Use RANSAC to find true matches
-[H, inliers] = ransacfithomography(left_match', right_match', 0.01);
+[~, inliers] = ransacfithomography(left_match', right_match', 0.01);
+% Set true matches
+% left_match = left_match(inliers(:), 1:2); 
+% right_match = right_match(inliers(:), 1:2); 
+
+left_true(:,1) = left_match(inliers(:), 2); 
+left_true(:,2) = left_match(inliers(:), 1); 
+
+right_true(:,1) = right_match(inliers(:), 2); 
+right_true(:,2) = right_match(inliers(:), 1);
+
 fprintf('DONE\n')
+
+% Estimate fundamental matrix 
+f = estimateFundamentalMatrix(left_true, right_true);
+
+% Estimate rectification parameters
+[t1, t2] = estimateUncalibratedRectification(f, left_true, right_true, size(left)); 
+[left_rect, right_rect] = rectifyStereoImages(left_undistorted, right_undistorted, t1, t2);
+
+figure;
+imshow(stereoAnaglyph(left_rect,right_rect));
 
 % End of Program 
 fprintf('\nProgram finished, press any key to exit.\n');
