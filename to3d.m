@@ -36,6 +36,7 @@ clc
 
 %% Undistort Images
 clc
+close all
 
 % Load in image pairs
 left = imread('TestStereo/DSC05899.JPG');
@@ -75,19 +76,23 @@ fprintf('DONE\n')
 % Matching Features
 fprintf('Matching Features...')
 indexPairs = matchFeatures(left_features, right_features);
-left_match = double(left_coords.Location(indexPairs(:,1),1:2));
-right_match = double(right_coords.Location(indexPairs(:,2),1:2));
+
+left_match = zeros(size(indexPairs));
+right_match = zeros(size(indexPairs));
+
+% Swap x and y 
+left_match(:,1) = double(left_coords.Location(indexPairs(:,1),2));
+left_match(:,2) = double(left_coords.Location(indexPairs(:,1),1));
+
+right_match(:,1) = double(right_coords.Location(indexPairs(:,2),2));
+right_match(:,2) = double(right_coords.Location(indexPairs(:,2),1));
+
 % Use RANSAC to find true matches
 [~, inliers] = ransacfithomography(left_match', right_match', 0.01);
+
 % Set true matches
-% left_match = left_match(inliers(:), 1:2); 
-% right_match = right_match(inliers(:), 1:2); 
-
-left_true(:,1) = left_match(inliers(:), 2); 
-left_true(:,2) = left_match(inliers(:), 1); 
-
-right_true(:,1) = right_match(inliers(:), 2); 
-right_true(:,2) = right_match(inliers(:), 1);
+left_match = left_match(inliers(:), 1:2); 
+right_match = right_match(inliers(:), 1:2); 
 
 fprintf('DONE\n')
 
@@ -95,18 +100,29 @@ fprintf('DONE\n')
 f = estimateFundamentalMatrix(left_true, right_true);
 
 % Estimate rectification parameters
-[t1, t2] = estimateUncalibratedRectification(f, left_true, right_true, size(left)); 
+[t1, t2] = estimateUncalibratedRectification(f, left_match, right_match, size(left_undistorted)); 
 [left_rect, right_rect] = rectifyStereoImages(left_undistorted, right_undistorted, t1, t2);
 
+%show stereo anaglyph 
+stereo = stereoAnaglyph(left_rect, right_rect);
 figure;
-imshow(stereoAnaglyph(left_rect,right_rect));
+imshow(stereo);
+
+% Compute disparity map
+left_gray = rgb2gray(left_rect);
+right_gray = rgb2gray(right_rect);
+
+disparityRange = [0 48];
+disparityMap = disparitySGM(left_gray,right_gray,'DisparityRange',disparityRange,'UniquenessThreshold',20);
+
+figure
+imshow(disparityMap,disparityRange)
+title('Disparity Map')
+colormap jet
+colorbar
 
 % End of Program 
 fprintf('\nProgram finished, press any key to exit.\n');
 pause;
 return 
-
-
-%% Functions
-
 
