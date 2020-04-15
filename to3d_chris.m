@@ -39,20 +39,19 @@ clear all
 
 path1 = 'StereoImages\DSC05899.JPG';
 path2 = 'StereoImages\DSC05900.JPG';
-fID = fopen('PointCloud.txt', 'a');
-disparity(path1, path2, 'DSC05899.JPG', 'DSC05900.JPG', fID);
+disparity(path1, path2, 'DSC05899.JPG', 'DSC05900.JPG');
 % path1 = 'DSC05644.JPG';
 % path2 = 'DSC05645.JPG';
 % disparity(path1, path2, 'DSC05644.JPG', 'DSC05645.JPG');
 fprintf('DONE\n');
-fclose(fID);
+
 % End of Program 
 % fprintf('\nProgram finished, press any key to exit.\n');
 % pause;
 return 
 
 %% Undistort Images
-function disparity(path1, path2, name1, name2, fID)
+function disparity(path1, path2, name1, name2)
 clc
 close all
 
@@ -82,8 +81,8 @@ cameraParams = cameraParameters('IntrinsicMatrix', inMatrix, ...
 
 % Undistort Image
 % NOTE - Images being resized to reduce computation time and machine stress
-left = imresize(left, 0.25);
-right = imresize(right, 0.25); 
+left = imresize(left, 0.5);
+right = imresize(right, 0.5); 
 [left_undistorted, ~] = undistortImage(left, cameraParams);
 [right_undistorted, ~] = undistortImage(right, cameraParams);
 
@@ -92,8 +91,8 @@ left_points = detectSURFFeatures(rgb2gray(left_undistorted));
 right_points = detectSURFFeatures(rgb2gray(right_undistorted));
 
 % Extract Features (currently only the strongest 1000)
-[left_features, left_coords] = extractFeatures(rgb2gray(left_undistorted),left_points.selectStrongest(500));
-[right_features, right_coords] = extractFeatures(rgb2gray(right_undistorted),right_points.selectStrongest(500));
+[left_features, left_coords] = extractFeatures(rgb2gray(left_undistorted),left_points.selectStrongest(1000));
+[right_features, right_coords] = extractFeatures(rgb2gray(right_undistorted),right_points.selectStrongest(1000));
 
 % Matching Features
 indexPairs = matchFeatures(left_features, right_features);
@@ -109,23 +108,21 @@ right_match = double(right_coords.Location(indexPairs(:,2),1:2));
 left_true = left_match(indexPairs, 1:2); 
 right_true = right_match(indexPairs, 1:2); 
 
+figure
+showMatchedFeatures(left_undistorted, right_undistorted, left_true, right_true);
+
 % clearvars -except left_true right_true f name1 name2 ...
 %     left_undistorted right_undistorted cameraParams
 
-% Calculate stereo parameters
-[R, t] = cameraPose(f, cameraParams, left_true, right_true);
+% Estimate rectification parameters
+[t1, t2] = estimateUncalibratedRectification(f, left_true, right_true, size(left_undistorted)); 
+%[left_rect, right_rect] = rectifyStereoImages(left_undistorted, right_undistorted, t1, t2);
+[left_rect, right_rect] = rectifyStereoImages(left_undistorted, right_undistorted, t1, t2,'OutputView','full');
 
-clearvars -except R t cameraParams left_undistorted right_undistorted fID
-  
-% Get stereoParameters
-stereoParams = stereoParameters(cameraParams, cameraParams, R, t);
-%Rectify images using stereo parameters
-[left_rect, right_rect] = rectifyStereoImages(left_undistorted, right_undistorted, stereoParams, 'OutputView','full');
-
-% Show stereo anaglyph 
-% stereo = stereoAnaglyph(left_rect, right_rect);
-% figure;
-% imshow(stereo);
+%Show stereo anaglyph 
+stereo = stereoAnaglyph(left_rect, right_rect);
+figure;
+imshow(stereo);
 
 % Compute disparity map
 disparityRange = [-64 64];
@@ -133,11 +130,11 @@ disparityMap = disparitySGM(rgb2gray(left_rect),rgb2gray(right_rect), ...
      'DisparityRange',disparityRange, 'UniquenessThreshold', 0);
  
 % -- UNCOMMENT BELOW TO SAVE IMAGES AND DISPLAY DISPARITY MAP --
-% figure
-% imshow(disparityMap,disparityRange)
-% title('Disparity Map')
-% colormap jet
-% colorbar
+figure
+imshow(disparityMap,disparityRange)
+title('Disparity Map')
+colormap jet
+colorbar
 
 % name1 = strcat('Rectified\RECT_', name1);  
 % name2 = strcat('Rectified\RECT_', name2);  
@@ -150,13 +147,14 @@ disparityMap = disparitySGM(rgb2gray(left_rect),rgb2gray(right_rect), ...
 %      'DisparityRange',disparityRange, 'UniquenessThreshold', 0),...
 %      'Disparity\DISP_Pair.jpg');
  
-xyzPoints = reconstructScene(disparityMap,stereoParams);
-X = xyzPoints(:,:,1);
-X = xyzPoints(:,:,1);
-X = xyzPoints(:,:,1);
-clear xyzPoints
+% Calculate 
+[R, t] = cameraPose(f, cameraParams, left_true, right_true);
 
-fprintf(fID, '%f %f %f\n', unique(xyzPoints(xyzPoints >= -4000 & xyzPoints <= 4000),'rows'));
+% calculate stereo parameters
+% left_cam = cameraParameters('IntrinsicMatrix', t1'*inMatrix);
+% right_cam = cameraParameters('IntrinsicMatrix', t2'*inMatrix);
+% 
+% stereoParams = stereoParameters(left_cam, right_cam, R, t);
+% xyzPoints = reconstructScene(disparityMap,stereoParams);
+
 end
-
-
